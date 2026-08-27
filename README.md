@@ -22,7 +22,7 @@
 
 ```bash
 # 从 GitHub 安装
-dsh plugin --profile web add https://github.com/你的用户名/dsh-web-startup-auth.git
+dsh plugin --profile web add https://github.com/520mhj/dsh-web-startup-auth.git
 
 # 或从本地目录安装
 dsh plugin --profile web add /path/to/dsh-web-startup-auth
