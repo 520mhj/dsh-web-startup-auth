@@ -282,6 +282,10 @@ export function apply(ctx: Context, _config: Config): void {
   // followed the umask) to owner-only access before serving any traffic.
   hardenCredentialFilePermissions()
 
+  // ── 1-2. Login page + auth API (ONLY for 0.0.0.0 direct exposure) ─────────
+  // In reverse-proxy mode (127.0.0.1) the proxy handles auth; registering
+  // /login + /api/auth/* causes SPA redirect loops. Skip all auth-UI routes.
+  if (bindHost === ALL_INTERFACES_HOST) {
   // ── 1. Register the login page route ──────────────────────────────────────
   ctx.effect(() => webServer.register({
     kind: 'exact',
@@ -487,10 +491,25 @@ export function apply(ctx: Context, _config: Config): void {
   for (const route of authEndpoints) {
     ctx.effect(() => webServer.register(route), `web-auth: ${route.path} route`)
   }
+  } // end if (bindHost === ALL_INTERFACES_HOST)
 
-  // ── 3. Inject a redirect check into the SPA index ─────────────────────────
-  // When the SPA boots without a valid session, send it to the login page.
-  // Static assets still load without auth; the SPA shell redirects early.
+  // Frontend redirect-to-login check — only needed in 0.0.0.0 direct mode.
+  // In reverse-proxy mode the proxy handles auth; this check causes redirect
+  // loops because /api/auth/status is not registered.
+  const redirectCheck = bindHost === ALL_INTERFACES_HOST ? `
+;(async function () {
+  try {
+    var res = await fetch('/api/auth/status')
+    var data = await res.json()
+    if (window.location.pathname !== '/login' && (!data.registered || !data.authenticated)) {
+      window.location.replace('/login')
+      return
+    }
+  } catch (error) {}
+})()
+` : ''
+
+  // ── 3. Inject client-side fixups into the SPA index ───────────────────────
   webServer.tapIndex((html) => {
     const script = `<script>
 ;(function () {
@@ -575,16 +594,7 @@ export function apply(ctx: Context, _config: Config): void {
   }
   tryInstallIsLoopbackOverride()
 })()
-;(async function () {
-  try {
-    var res = await fetch('/api/auth/status')
-    var data = await res.json()
-    if (window.location.pathname !== '/login' && (!data.registered || !data.authenticated)) {
-      window.location.replace('/login')
-      return
-    }
-  } catch (error) {}
-})()
+${redirectCheck}
 </script>`
     return html.replace('</head>', `${script}</head>`)
   })
